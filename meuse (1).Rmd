@@ -1,0 +1,387 @@
+---
+title: "Meuse Data Analysis"
+date: "2024-03-17"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+### About Meuse Data set
+
+The dataset contains measurements of several variables related to soil and heavy metal pollution in the Meuse River basin in Belgium.
+
+-   **x, y**: Spatial coordinates representing the locations where measurements were taken.
+
+-   **cadmium**: Concentration of cadmium (Cd) in the soil, measured in parts per million (ppm).
+
+-   **copper**: Concentration of copper (Cu) in the soil, measured in parts per million (ppm).
+
+-   **lead**: Concentration of lead (Pb) in the soil, measured in parts per million (ppm).
+
+-   **zinc**: Concentration of zinc (Zn) in the soil, measured in parts per million (ppm).
+
+-   **elev:** Elevation of the sampling locations, measured in meters above sea level.
+
+-   **dist**: Distance to the Meuse River, measured in meters.
+
+-   **ffreq**: Frequency of fine-grained sediments in the soil.
+
+-   **soil**: Soil type at the sampling locations.
+
+### R Packeges
+
+```{r,warning=FALSE,message=FALSE}
+library(sp)
+library(gstat)
+library(gridExtra)
+```
+
+### Meuse Data set
+
+```{r,message=FALSE}
+data(meuse)
+head(meuse)
+```
+
+```{r}
+class(meuse)
+dim(meuse)
+```
+
+```{r}
+names(meuse)
+```
+
+```{r}
+str(meuse)
+```
+
+```{r}
+summary(meuse)
+```
+
+#### Checking missing values
+
+```{r}
+missing_val <- colSums(is.na(meuse))
+print(missing_val)
+```
+
+##### Removing missing value
+
+```{r}
+meuse_new <- meuse[complete.cases(meuse),]
+dim(meuse_new)
+```
+
+```{r}
+summary(meuse_new)
+```
+
+## Spatial visualization
+
+```{r,message=FALSE}
+coordinates(meuse_new) = ~x+y
+class(meuse_new)
+```
+
+```{r}
+coordinates(meuse_new)[1:5,]
+```
+
+```{r}
+spplot(meuse_new, "zinc",  colorkey = TRUE, main = "zinc distribution (ppm)")
+```
+
+Figure 1 :Zinc concentrations (ppm)
+
+-Figure1 provides insights into the spatial distribution of zinc pollution across the study area.
+
+```{r}
+bubble(meuse_new, "zinc", col=c("#00ff0088"), main = "zinc concentrations  (ppm)")
+
+```
+
+Figure 2: Zinc concentrations
+
+-Figure 2 visually represents the spatial distribution of zinc concentrations in the meuse dataset, with larger and greener bubbles indicating higher concentrations of zinc, and smaller and less green bubbles indicating lower concentrations.
+
+```{r,message=FALSE}
+data(meuse.grid)
+summary(meuse.grid)
+```
+
+```{r,message=FALSE}
+str(meuse.grid)
+```
+
+```{r}
+class(meuse.grid)
+```
+
+```{r}
+coordinates(meuse.grid) = ~x+y
+class(meuse.grid)
+```
+
+```{r}
+gridded(meuse.grid) = TRUE
+class(meuse.grid)
+```
+
+```{r}
+colour_palatte <- colorRampPalette(c("purple","pink","yellow"))
+image(meuse.grid["dist"],col= colour_palatte(1000))
+title("distance to river (purple= dist(0))")
+```
+
+Figure 3:Distance to river
+
+-Figure 3 visualizes the distance of points in the dataset from the river , making it easier to interpret spatial patterns in relation to proximity to the river.
+
+### Semi Variogram Cloud
+
+```{r}
+plot(variogram(log(zinc)~1, meuse_new, cloud=TRUE), main = "Semi variogram cloud")
+```
+
+Figure 4 : Semi Variogram Cloud
+
+-Figure 4 gives valuable insights into the spatial behavior of the variable and inform subsequent spatial analysis and modeling decisions.
+
+### Fitting the variogram
+
+```{r}
+vgm1 = variogram(log(zinc)~1, meuse_new)
+head(vgm1)
+```
+
+```{r}
+plot(vgm1, main = "Variogram")
+```
+
+Figure 5 : Variogram
+
+#### Fitting the **Spherical variogram model** variogram model
+
+```{r,message=FALSE}
+vgm1.fit = fit.variogram(vgm1, model = vgm(1, "Sph", 900, 1))
+vgm1.fit
+```
+
+```{r}
+plot(vgm1, vgm1.fit, main= "Spherical variogram model")
+```
+
+Figure 6: Spherical variogram model
+
+-figure 6 shows fitted variogram model
+
+#### Fitting the **Exponential variogram model** variogram model
+
+```{r}
+vgm2 = variogram(log(zinc)~dist, meuse_new)
+vgm2.fit = fit.variogram(vgm2, model = vgm(1, "Exp", 300, 1))
+vgm2.fit
+```
+
+```{r}
+plot(vgm2, vgm2.fit, main ="Exponential variogram model")
+```
+
+Figure 7 :Exponential variogram model
+
+```{r}
+combine_plot0 <-grid.arrange(plot(vgm1, vgm1.fit, main= "Spherical variogram model"),plot(vgm2, vgm2.fit, main ="Exponential variogram model"),ncol=2)
+```
+
+Figure 8 : Combine plot SVM and EVM
+
+-By visually comparing the fitted variogram models to the empirical variogram derived from the Meuse dataset, it is evident that the Spherical variogram model provides the best fit.
+
+### The inverse distance weighted interpolation
+
+```{r,message=FALSE}
+zinc.idw = idw(zinc~1, meuse_new, meuse.grid)
+class(zinc.idw)
+```
+
+```{r}
+spplot(zinc.idw["var1.pred"], main = "Zinc inverse distance weighted interpolations")
+
+```
+
+Figure 9 :Zinc inverse distance weighted interpolations
+
+```{r}
+p1 <-spplot(meuse_new, "zinc",  colorkey = TRUE, main = "Zinc concentrations (ppm)")
+p2 <-spplot(zinc.idw["var1.pred"], main = "Zinc idw interpolations")
+combine_plot1 <-grid.arrange(p1,p2,ncol=2)
+
+```
+
+Figure 10 : Actual and Interpolated Zinc Concentrations around Meuse River
+
+-Figure 10 displays the spatial distribution of zinc concentrations around the Meuse River. cooler colors represent higher concentrations, while warmer colors indicate lower levels.
+
+### The IDW interpolation.
+
+#### Check the effect of power (p) on the IDW interpolation by changing the value of "idp"
+
+```{r,message=FALSE}
+idw_result_0.5 <- idw(log(zinc) ~ 1, meuse_new, meuse.grid, idp = 0.5)
+meuse.grid$idwp0.5 <- idw_result_0.5$var1.pred
+plot1 <-spplot(meuse.grid[c("idwp0.5")], main = "IDW Interpolation (idp = 0.5)")
+
+idw_result_2.5 <- idw(log(zinc) ~ 1, meuse_new, meuse.grid, idp = 2.5)
+meuse.grid$idwp2.5 <- idw_result_2.5$var1.pred
+plot2 <-spplot(meuse.grid[c("idwp2.5")], main = "IDW Interpolation (idp = 2.5)")
+
+idw_result_5 <- idw(log(zinc) ~ 1, meuse_new, meuse.grid, idp = 05)
+meuse.grid$idwp05 <- idw_result_5$var1.pred
+plot3 <-spplot(meuse.grid[c("idwp05")], main = "IDW Interpolation (idp = 05)")
+
+idw_result_10 <- idw(log(zinc) ~ 1, meuse_new, meuse.grid, idp = 10)
+meuse.grid$idwp10 <- idw_result_10$var1.pred
+plot4 <-spplot(meuse.grid[c("idwp10")], main = "IDW Interpolation (idp = 10)")
+
+combine_plot2 <-grid.arrange(plot1,plot2,plot3,plot4,ncol=2)
+combine_plot2
+```
+
+Figure 11:Comparison of IDW Interpolations with Different Power Parameters
+
+-IDW Interpolation (idp = 0.5) shows a smoother gradient of colors, indicating less sensitivity to local variations.
+
+-IDW Interpolation (idp = 2.5) Displays more distinct color variations, indicating increased sensitivity to local changes.
+
+-IDW Interpolation (idp = 5) Balances smoothness and sensitivity, capturing both large-scale trends and local fluctuations.
+
+-IDW Interpolation (idp = 10) Exhibits highly localized color variations, showing maximum sensitivity to local changes.
+
+## Kriging
+
+Simple kriging
+
+```{r,message=FALSE}
+simplekrig <- krige(log(zinc)~1, meuse_new, meuse.grid, vgm1.fit, beta = 5)
+plot(simplekrig['var1.pred'], pch=15, nbreaks = 64, main ="Simple Kriging [log10(Zn ppm)]",
+     reset = FALSE)
+```
+
+Figure 12 : simple kriging
+
+### Ordinary kriging
+
+```{r,message=FALSE}
+ordinarykrig <- krige(log(zinc)~1, meuse_new, meuse.grid, vgm1.fit)
+plot(ordinarykrig['var1.pred'], pch=15, nbreaks = 64, main = "Ordinary Kriging [log10(Zn ppm)]")
+```
+
+Figure 13 : Ordinary kriging
+
+## Cross validation
+
+### For IDW method
+
+```{r,message=FALSE}
+idw.cv <- krige.cv(log(zinc) ~ 1, meuse_new, nmax = 7, nfold=5, set = list(idp = 2.5))
+idw.cv[1:5,]
+
+```
+
+### For ordinary kriging
+
+```{r,message=FALSE}
+ok.cv  <- krige.cv(log(zinc)~1, meuse_new, vgm1.fit, nmax = 40, nfold=5)
+ok.cv[1:5,]
+
+```
+
+### Correlation graph
+
+```{r}
+plot(var1.pred ~ observed, idw.cv, main="IDW correlation ", ylab="IDW pred.")
+
+```
+
+Figure 14 : Correlation plot between IDW prediction and observed values
+
+-Accroding to the figure 14 there is positive liner relationship between IDW prediction values and observed values
+
+```{r}
+plot(var1.pred ~ observed, ok.cv, main="Ordinary kriging correlation", ylab="OK pred.")
+
+```
+
+Figure 15 : Correlation plot between ordinary kriging prediction and observed values
+
+-Accroding to the figure 14 there is positive liner relationship between ordinray prediction values and observed values
+
+#### Correlation of IDW predicted value and observed value
+
+```{r}
+corr_idw <- cor(idw.cv$var1.pred,idw.cv$observed)
+corr_idw
+```
+
+#### Correlation of IDW predicted value and observed value
+
+```{r}
+corr_ok <- cor(ok.cv$var1.pred,ok.cv$observed)
+corr_ok
+```
+
+### Residual Mean Squared Error (RMSE)
+
+#### RMSE for IDW method
+
+```{r}
+sqrt(sum(idw.cv$residual^2)/length(idw.cv$residual))
+
+```
+
+#### RMSE for Ordinary Kriging
+
+```{r}
+sqrt(sum(ok.cv$residual^2)/length(ok.cv$residual))
+```
+
+## Variogram map
+
+```{r}
+plot(variogram(log(zinc) ~ 1, meuse_new, map = TRUE, cutoff = 5000, width = 100),main="varigram map")
+```
+
+Figure 14: Variogram map
+
+-According to figure 14 the observed variogram map, it suggests the presence of anisotropy in the spatial distribution of the variable under consideration. Anisotropy indicates that the spatial dependence
+
+```{r}
+plot(variogram(log(zinc) ~ 1, meuse_new, alpha = c(0, 45, 90, 135)))
+```
+
+Figure 15: Exploring Directional Anisotropy in Zinc Concentration Variability
+
+-Figure 15 presents an investigation into the directional anisotropy of zinc concentration variability around the Meuse River basin.
+
+## Conclution
+
+-   In accordance with Figure 1 and 2, zinc concentration is observed to be higher in proximity to the river.
+
+-   Based on Figure 8, upon visually comparing the fitted variogram models with the empirical variogram derived from the Meuse dataset, it becomes apparent that the Spherical variogram model offers the most suitable fit.
+
+-   Figure 10 illustrates the distribution of zinc concentration surrounding the river at each data point. Warmer colors denote elevated concentrations, whereas cooler colors signify lower levels.
+
+-   Figure 11 shows that idp value significantly impacts the resulting IDW interpolation.
+
+-   The appropriate kriging method is ordinary kriging because there is an unknown constant trend.
+
+-   In Figure 14, upon examining the variogram map, the presence of **anisotropy** in the spatial distribution of the variable under consideration is evident.
+
+-   There is spatial dependence.
